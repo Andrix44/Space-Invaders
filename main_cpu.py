@@ -4,7 +4,8 @@ from system import Interpreter, Intel8080
 
 
 romname = 'ROMS/Space Invaders.rom'
-i8080 = Intel8080(romname)
+i8080 = Intel8080()
+i8080.LoadROM(romname)
 interp = Interpreter()
 
 with open(romname, 'rb') as rom:

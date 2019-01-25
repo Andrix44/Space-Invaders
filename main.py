@@ -1,33 +1,18 @@
-import hashlib
 import sys
 import subprocess
 
 from system import Interpreter, Intel8080
 
 try:
-    import PyQt5.QtCore as QtCore
-    import PyQt5.QtGui as QtGui
-    import PyQt5.QtWidgets as QtWidgets
+    from PySide2 import QtCore, QtGui, QtWidgets
 except:
-    subprocess.call([sys.executable, '-m', 'pip', 'install', 'PyQt5'])
-    import PyQt5.QtCore as QtCore
-    import PyQt5.QtGui as QtGui
-    import PyQt5.QtWidgets as QtWidgets
+    subprocess.call([sys.executable, '-m', 'pip', 'install', 'PySide2'])
+    from PySide2 import QtCore, QtGui, QtWidgets
 
-if(sys.version.startswith('3.7')):
-    print('Please use Python 3.6.x, as 3.7 is broken with the keyboard module.')
-    sys.exit(1)
-
-try:
-    import keyboard
-except:
-    subprocess.call([sys.executable, '-m', 'pip', 'install', 'keyboard'])
-    import keyboard
 
 DEBUG = True
 CLOCK = 2000000  # Hz
 REFRESH = 60  # Hz
-CYCLES_PER_FRAME = 10  # int(CLOCK / REFRESH)
 
 
 def DebugPrint(text):
@@ -44,6 +29,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.core = EmuCore()
         self.emu_thread = QtCore.QThread()
         self.core.moveToThread(self.emu_thread)
+        self.emu_thread.started.connect(self.core.run)
 
         self.open_act = QtWidgets.QAction('Open ROM', self)
         self.open_act.triggered.connect(Util.Launch)
@@ -52,21 +38,10 @@ class MainWindow(QtWidgets.QMainWindow):
         exit_act.triggered.connect(self.emu_thread.quit)
         exit_act.triggered.connect(QtWidgets.qApp.quit)
 
-        """ self.save_act = QtWidgets.QAction('Save state', self)
-        self.save_act.triggered.connect(self.core.sys8.SaveState)
-        self.save_act.setEnabled(False)
-
-        self.load_act = QtWidgets.QAction('Load state', self)
-        self.load_act.triggered.connect(self.core.sys8.LoadState)
-        self.load_act.setEnabled(False) """
-
         menubar = self.menuBar()
         filemenu = menubar.addMenu('File')
         filemenu.addAction(self.open_act)
         filemenu.addAction(exit_act)
-        """ emumenu = menubar.addMenu('Emulation')
-        emumenu.addAction(self.save_act)
-        emumenu.addAction(self.load_act) """
 
         self.native = QtGui.QBitmap(224, 256)
         self.native.fill(QtCore.Qt.color1)
@@ -84,63 +59,57 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
 
-    @QtCore.pyqtSlot(list)
-    def Draw(self, gfx):
+    @QtCore.Slot(list)
+    def Draw(self, state):
         self.native.fill(QtCore.Qt.color1)
-        for i in range(256):
-            for j in range(224):
-                if(gfx[i][j]):
-                    self.painter.drawPoint(j, i)
+        for i in range(256):  # Height
+            index = 0x2400 + (i << 5)
+            for j in range(32):
+                vram_byte = state.memory[index]
+                index += 1
+                for k in range(8):
+                    if(vram_byte & 1):
+                        self.painter.drawPoint(i, 255 - j*8 - k)
+                    vram_byte = vram_byte >> 1
 
         self.scaled.setPixmap(ui.native.scaled(672, 768))
         self.scaled.repaint()
         return
 
+    def keyPressEvent(self, event):
+        print(event.key())
+    
+    def keyReleaseEvent(self, event):
+        print(event.key())
+
 
 class Util():
-    @staticmethod
-    def HashRom(romname):
-        with open(romname, 'rb') as rom:
-            md5 = hashlib.new('md5')
-            md5.update(rom.read())
-            return(md5.hexdigest())
-
     @staticmethod
     def Launch():
         filepath = QtWidgets.QFileDialog.getOpenFileName(None, 'Open ROM', '', 'Space Invaders ROM (*.*)')
         if(filepath[0] != ''):
             ui.core.romname = filepath[0]
-            ui.emu_thread.started.connect(ui.core.run)
             ui.emu_thread.start()
 
 
 class EmuCore(QtCore.QObject):
-    gfx_upl = QtCore.pyqtSignal(list)
+    gfx_upl = QtCore.Signal(list)
 
     def __init__(self):
         super().__init__()
         self.romname = ''
-        self.locked = False
 
     def run(self):
-        i8080 = Intel8080(self.romname)
+        i8080 = Intel8080()
+        i8080.LoadROM(self.romname)
         interp = Interpreter()
-        self.romhash = Util.HashRom(self.romname)
 
         ui.open_act.setEnabled(False)
-        """ ui.save_act.setEnabled(True)
-        ui.load_act.setEnabled(True) """
 
-        self.gfx_upl.connect(ui.Draw, type=QtCore.Qt.BlockingQueuedConnection)
-        # keyboard.hook(i8080.KeyAction)
+        self.gfx_upl.connect(ui.Draw, type=QtCore.Qt.DirectConnection)
         while(True):
             interp.ExecInstr(i8080)
-            """ curr_ccl = 0
-            while(curr_ccl < CYCLES_PER_FRAME):
-                if(not self.locked):
-                    interp.ExecInstri8080)
-                    curr_ccl += 1
-                    self.gfx_upl.emit(i8080.gfx) """
+            self.gfx_upl.emit(i8080)
 
 
 if __name__ == '__main__':

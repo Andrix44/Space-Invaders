@@ -1,26 +1,27 @@
 import sys
 import os
 
-CPUDIAG = False
-
 
 class Intel8080:
-    def __init__(self, romname):
+    def __init__(self):
         self.memory = [0] * 0xFFFF
         self.a = self.b = self.c = self.d = self.e = self.h = self.l = 0
         self.S = self.Z = self.AC = self.P = self.C = 0
         self.pc = self.sp = 0
+        self.shift_hi = self.shift_lo = self.shift_offset = 0
         self.interrupt = 0
-        self.gfx = [[0] * 224 for i in range(256)]
 
-        with open(romname, 'rb') as rom:
-            for i in range(os.path.getsize(romname)):
-                if(CPUDIAG):
+        self.cpudiag = False
+
+    def LoadROM(self, path):
+        with open(path, 'rb') as rom:
+            for i in range(os.path.getsize(path)):
+                if(self.cpudiag):
                     self.memory[i + 0x100] = ord(rom.read(1))
                 else:
                     self.memory[i] = ord(rom.read(1))
 
-        if(CPUDIAG):
+        if(self.cpudiag):
             self.pc = 0x100  # The program starts from 0x100
             self.memory[0x170] = 0x7  # Patch a bug
             self.memory[0x59C] = 0xC3  # Patch the check for DAA
@@ -123,7 +124,7 @@ class Interpreter:
         regs = (state.b, state.c, state.d, state.e, state.h, state.l, state.memory[(state.h << 8) | state.l], state.a)
         return regs[reg]
 
-    def SetRegValue(self, state, reg, value):  # Change this
+    def SetRegValue(self, state, reg, value):
         if(reg == 0x0):
             state.b = value
         elif(reg == 0x1):
@@ -168,7 +169,7 @@ class Interpreter:
         precise = eval(f"{val0}{op}{val1}")
         state.S = (precise & 0x80) >> 7
         state.Z = (precise & 0xFF) == 0
-        if(auxiliary and False):  # This is costly and DAA is not implemented anyway
+        if(auxiliary and False):  # This is costly and DAA is not implemented anyway so I disabled it
             state.AC = eval(f"{val0 & 0xF}{op}{val1 & 0xF} > 0xF")
         state.P = (bin(precise & 0xFF).count('1') % 2) == 0
         if(carry):
@@ -187,6 +188,22 @@ class Interpreter:
     def SetReturn(self, state):
         state.pc = ((state.memory[state.sp + 1] << 8) | state.memory[state.sp])
         state.sp += 2
+
+    def Input(self, state, port):
+        if(port == 0):
+            return 1
+        elif(port == 1):
+            return 0
+        elif(port == 3):
+            temp = (state.shift_hi << 8) | state.shift_lo
+            return (temp >> (8 - state.shift_offset))
+    
+    def Output(self, state, port):
+        if(port == 2):
+            state.shift_offset = state.a & 0x7
+        elif(port == 4):
+            state.shift_lo = state.shift_hi
+            state.shift_hi = state.a
 
 ############################################################################################################
 ############################################################################################################
@@ -220,7 +237,7 @@ class Interpreter:
                 state.AC = True
                 #state.a = self.SetFlagsCalc(state, state.a, "+", 6)
                 if(((state.a & 0xF0) >> 4) > 9 or state.C):
-                    state.S = ((state.a + 0x60) & 0x80) >> 7  # Overwrite the sign flag (the others can change as well if I'm really unlucky)
+                    state.S = ((state.a + 0x60) & 0x80) >> 7
                     state.C = (state.a + 0x60) > 0xFF
                     state.a = (state.a + 0x60) & 0xFF """
 
@@ -281,9 +298,10 @@ class Interpreter:
         state.pc += 1
 
     def RegisterPair(self, state):
+        descr = self.instr & 0xCF
         rp = (self.instr >> 4) & 0x3  # Get the register pair to use
 
-        if(self.instr & 0xCF == 0xC5):  # PUSH
+        if(descr == 0xC5):  # PUSH
             if(rp == 3):  # PSW
                 state.memory[state.sp - 1] = state.a
                 state.memory[state.sp - 2] = (state.S << 7) | (state.Z << 6) | (state.AC << 4) | (state.P << 2) | (state.C << 7)
@@ -293,7 +311,7 @@ class Interpreter:
                 state.memory[state.sp - 2] = pair_value & 0xFF
             state.sp -= 2
 
-        elif(self.instr & 0xCF == 0xC1):  # POP
+        elif(descr == 0xC1):  # POP
             if(rp == 3):  # PSW
                 state.a = state.memory[state.sp + 1]
                 flags = state.memory[state.sp]
@@ -309,14 +327,14 @@ class Interpreter:
 
             state.sp += 2
 
-        elif(self.instr & 0xCF == 0x9):  # DAD
+        elif(descr == 0x9):  # DAD
             HL = self.GetPairValue(state, 2) + self.GetPairValue(state, rp)
             state.C = HL > 0xFFFF
             state.h = (HL >> 8) & 0xFF
             state.l = HL & 0xFF
 
-        elif((self.instr & 0xCF == 0x3) or (self.instr & 0xCF == 0xB)):  # INX and DCX
-            if(self.instr & 0xCF == 0x3):  # INX
+        elif((descr == 0x3) or (descr == 0xB)):  # INX and DCX
+            if(descr == 0x3):  # INX
                 result = (self.GetPairValue(state, rp) + 1) & 0xFFFF
             else:  # DCX
                 result = (self.GetPairValue(state, rp) - 1) & 0xFFFF
@@ -461,13 +479,12 @@ class Interpreter:
         state.pc += 1
 
     def InputOutput(self, state):
-        device = state.memory[state.pc + 1]
-        device = device  # Silences a warning for the time being
+        port = state.memory[state.pc + 1]
 
         if((self.instr >> 3) & 0x1):  # IN
-            print("Input not implemented")
+            state.a = self.Input(state, port)
         else:  # OUT
-            print("Output not implemented")
+            self.Output(state, port)
 
         state.pc += 1
 
@@ -503,5 +520,3 @@ class Interpreter:
         assert(state.e >= 0 and state.e <= 0xFF)
         assert(state.h >= 0 and state.h <= 0xFF)
         assert(state.l >= 0 and state.l <= 0xFF) """
-
-        # Simplify the ifs by creating an 'op' and comparing that
