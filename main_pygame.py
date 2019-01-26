@@ -1,5 +1,6 @@
 import sys
 import subprocess
+import time
 
 from system import Interpreter, Intel8080
 
@@ -35,9 +36,13 @@ def main(path, cpudiag=False):
     interp = Interpreter()
 
     vram = [0]
+    last_interrupt = 0
 
     while(True):
         interp.ExecInstr(i8080)
+        if(((time.perf_counter() * 1000) - last_interrupt) > 1/60 and i8080.interrupt):
+            # interp.GenerateInterrupt(i8080, 2) It keeps reseting the pc to the interrupt before it could finish
+            last_interrupt = time.perf_counter() * 1000
 
         for event in pygame.event.get():
             if(event.type == pygame.KEYDOWN):
@@ -60,7 +65,7 @@ def main(path, cpudiag=False):
                         vram_byte = vram_byte >> 1
             vram = i8080.memory[0x2400:0x3FFF]
             pygame.transform.scale(native, (672, 768), scaled)
-            pygame.display.flip()
+            pygame.display.update()
 
 if __name__ == '__main__':
     try:  # Cpudiag mode

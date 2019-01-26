@@ -520,3 +520,9 @@ class Interpreter:
         assert(state.e >= 0 and state.e <= 0xFF)
         assert(state.h >= 0 and state.h <= 0xFF)
         assert(state.l >= 0 and state.l <= 0xFF) """
+
+    def GenerateInterrupt(self, state, interrupt):
+        state.memory[state.sp - 1] = state.pc >> 8  # Might have to add 1 to it
+        state.memory[state.sp - 2] = state.pc & 0xFF
+        state.sp -= 2
+        state.pc = interrupt * 8
