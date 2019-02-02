@@ -37,25 +37,30 @@ def main(path, cpudiag=False):
 
     vram = [0]
     last_interrupt = 0
+    req_new_frame = False
+    pygame.time.set_timer(pygame.USEREVENT, 16)
 
     while(True):
         interp.ExecInstr(i8080)
         if((time.process_time() - last_interrupt) > 1/60 and i8080.interrupt):
             # print(time.process_time() - last_interrupt)
-            interp.GenerateInterrupt(i8080, 2) #It keeps reseting the pc to the interrupt before it could finish
+            interp.GenerateInterrupt(i8080, 2)
             last_interrupt = time.process_time()
         """ elif(i8080.interrupt):
             print("Have to wait more, pc =", hex(i8080.pc)) """
 
         for event in pygame.event.get():
-            if(event.type == pygame.KEYDOWN):
+            if(event.type == pygame.USEREVENT):
+                req_new_frame = True
+            elif(event.type == pygame.KEYDOWN):
                 pass # Key handling
             elif(event.type == pygame.KEYUP):
                 pass # Key handling
             elif(event.type == pygame.QUIT):
                 return
 
-        if(vram != i8080.memory[0x2400:0x3FFF]):  # Drawing is still broken probably and doesn't have a timer yet
+        if(vram != i8080.memory[0x2400:0x3FFF] and req_new_frame):  # todo: Add colors
+            req_new_frame = False
             native.fill(pygame.Color(0, 0, 0, 0))
             for i in range(256):  # Height
                 index = 0x2400 + (i << 5)
@@ -79,7 +84,8 @@ if __name__ == '__main__':
         try:
             sys.argv[1]
         except:
-            sys.exit("Please enter the ROM path as an argument")
+            print("Please enter the ROM path as an argument")
+            sys.exit(1)
 
     if(cpudiag):
         main(sys.argv[1], sys.argv[2])

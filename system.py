@@ -32,7 +32,9 @@ class Intel8080:
 class Interpreter:
     def __init__(self):
         self.operator = ("+", "+ state.C +", "-", "- state.C -", "&", "^", "|")
+        self.registers = ("state.b", "state.c", "state.d", "state.e", "state.h", "state.l", "state.memory[(state.h << 8) | state.l]", "state.a")
         self.last_interrupt = [0, 0, 0, True]  # The fourth is for the first time it generates an interrupt
+        self.cached_operations = {}
 
         self.instruction_table = (self.NoOperation, self.Immediate, self.DataTransfer,
                                   self.RegisterPair, self.SingleRegister, self.SingleRegister,
@@ -122,7 +124,9 @@ class Interpreter:
                                   self.RST)
 
     def GetRegValue(self, state, reg):
-        regs = (state.b, state.c, state.d, state.e, state.h, state.l, state.memory[(state.h << 8) | state.l], state.a)
+        if(reg == 6):  # It might try to access an invalid memory region otherwise
+            return state.memory[(state.h << 8) | state.l]
+        regs = (state.b, state.c, state.d, state.e, state.h, state.l, None, state.a)
         return regs[reg]
 
     def SetRegValue(self, state, reg, value):
@@ -166,16 +170,19 @@ class Interpreter:
                  not state.P, state.P, not state.S, state.S)
         return conds[condition]
 
-    def SetFlagsCalc(self, state, val0, op, val1, carry=False, auxiliary=True):
-        precise = eval(f"{val0}{op}{val1}")
+    def SetFlagsCalc(self, state, reg_a, op, reg_b, carry=False, auxiliary=True):
+        op = f"{reg_a}{op}{reg_b}"
+        if(op not in self.cached_operations):
+            self.cached_operations[op] = compile(op, "", "eval")
+        precise = eval(self.cached_operations[op])
         state.S = (precise & 0x80) >> 7
         state.Z = (precise & 0xFF) == 0
         if(auxiliary and False):  # This is costly and DAA is not implemented anyway so I disabled it
-            state.AC = eval(f"{val0 & 0xF}{op}{val1 & 0xF} > 0xF")
-        state.P = (bin(precise & 0xFF).count('1') % 2) == 0
+            state.AC = eval(f"{reg_a & 0xF}{op}{reg_b & 0xF} > 0xF")
+        state.P = (bin(precise & 0xFF).count('1') % 2) == 0  # todo: maybe I should use the full precise result
         if(carry):
             if("-" in op):
-                state.C = val0 < val1
+                state.C = reg_a < reg_b
             else:
                 state.C = precise > 0xFF
         return precise & 0xFF
@@ -229,7 +236,7 @@ class Interpreter:
                 op = "+"
             elif(ver == 0x5):  # DCR
                 op = "-"
-            self.SetRegValue(state, reg, self.SetFlagsCalc(state, self.GetRegValue(state, reg), op, 1))
+            self.SetRegValue(state, reg, self.SetFlagsCalc(state, self.registers[reg], op, "1"))
 
         elif(self.instr == 0x2F):  # CMA
             state.a = 0xFF - state.a
@@ -239,7 +246,7 @@ class Interpreter:
             """ if((state.a & 0xF) > 9 or state.AC):
                 state.a = (state.a + 6) & 0xFF
                 state.AC = True
-                #state.a = self.SetFlagsCalc(state, state.a, "+", 6)
+                #state.a = self.SetFlagsCalc(state, "state.a", "+", "6")
                 if(((state.a & 0xF0) >> 4) > 9 or state.C):
                     state.S = ((state.a + 0x60) & 0x80) >> 7
                     state.C = (state.a + 0x60) > 0xFF
@@ -274,9 +281,9 @@ class Interpreter:
         reg = self.instr & 0x7
 
         if(op == 7):  # CMP
-            self.SetFlagsCalc(state, state.a, "-", self.GetRegValue(state, reg), True)
+            self.SetFlagsCalc(state, "state.a", "-", self.registers[reg], True)
         else:  # ADD, ADC, SUB, SBB, ANA, XRA, ORA
-            state.a = self.SetFlagsCalc(state, state.a, self.operator[op], self.GetRegValue(state, reg), True)
+            state.a = self.SetFlagsCalc(state, "state.a", self.operator[op], self.registers[reg], True)
 
         state.pc += 1
 
@@ -383,11 +390,11 @@ class Interpreter:
 
         elif(self.instr & 0xC7 == 0xC6):
             if(self.instr == 0xFE):  # CPI
-                self.SetFlagsCalc(state, state.a, "-", state.memory[state.pc + 1], True)
+                self.SetFlagsCalc(state, "state.a", "-", "state.memory[state.pc + 1]", True)
             else:  # ADI, ACI, SUI, SBI, ANI, XRI, ORI
                 op = (self.instr >> 3) & 0x7
                 aux = not(op == 4 or op == 5 or op == 6)  # ANI, XRI, ORI have this disabled
-                state.a = self.SetFlagsCalc(state, state.a, self.operator[op], state.memory[state.pc + 1], True, aux)
+                state.a = self.SetFlagsCalc(state, "state.a", self.operator[op], "state.memory[state.pc + 1]", True, aux)
 
         state.pc += 2
 
