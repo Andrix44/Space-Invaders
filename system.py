@@ -32,6 +32,7 @@ class Intel8080:
 class Interpreter:
     def __init__(self):
         self.operator = ("+", "+ state.C +", "-", "- state.C -", "&", "^", "|")
+        self.last_interrupt = [0, 0, 0, True]  # The fourth is for the first time it generates an interrupt
 
         self.instruction_table = (self.NoOperation, self.Immediate, self.DataTransfer,
                                   self.RegisterPair, self.SingleRegister, self.SingleRegister,
@@ -187,12 +188,15 @@ class Interpreter:
 
     def SetReturn(self, state):
         state.pc = ((state.memory[state.sp + 1] << 8) | state.memory[state.sp])
+        state.memory[state.sp + 1] = state.memory[state.sp] = 0
         state.sp += 2
 
-    def Input(self, state, port):
+    def Input(self, state, port):  # Right now it will only run in attract mode because of the hardcoded inputs
         if(port == 0):
             return 1
         elif(port == 1):
+            return 0
+        elif(port == 2):
             return 0
         elif(port == 3):
             temp = (state.shift_hi << 8) | state.shift_lo
@@ -325,6 +329,7 @@ class Interpreter:
                 high = state.memory[state.sp + 1]
                 self.SetPairValue(state, rp, low, high)
 
+            state.memory[state.sp + 1] = state.memory[state.sp] = 0
             state.sp += 2
 
         elif(descr == 0x9):  # DAD
@@ -407,13 +412,13 @@ class Interpreter:
         state.pc += 3
 
     def Jump(self, state):
+        addr = (state.memory[state.pc + 2] << 8) | state.memory[state.pc + 1]
+
         if(self.instr == 0xE9):  # PCHL
             state.pc = (state.h << 8) | state.l
             return
 
-        addr = (state.memory[state.pc + 2] << 8) | state.memory[state.pc + 1]
-
-        if(self.instr & 0x1):  # JMP
+        elif(self.instr & 0x1):  # JMP
             state.pc = addr
             return
 
@@ -486,7 +491,7 @@ class Interpreter:
         else:  # OUT
             self.Output(state, port)
 
-        state.pc += 1
+        state.pc += 2
 
     def Halt(self, state):
         state.pc += 1
@@ -501,7 +506,7 @@ class Interpreter:
         self.instr = state.memory[state.pc]
 
         # print(hex(state.a), hex(state.b), hex(state.c), hex(state.d), hex(state.e), hex(state.h), hex(state.l), hex(state.pc), hex(state.sp))
-        print('pc =', hex(state.pc), 'instr =', hex(self.instr))  # Can be debugprint later
+        # print('pc =', hex(state.pc), 'instr =', hex(self.instr))  # Can be debugprint later
 
         self.instruction_table[self.instr](state)
 
@@ -522,7 +527,14 @@ class Interpreter:
         assert(state.l >= 0 and state.l <= 0xFF) """
 
     def GenerateInterrupt(self, state, interrupt):
-        state.memory[state.sp - 1] = state.pc >> 8  # Might have to add 1 to it
-        state.memory[state.sp - 2] = state.pc & 0xFF
-        state.sp -= 2
-        state.pc = interrupt * 8
+        generate = (self.last_interrupt[3] or
+                   (state.memory[self.last_interrupt[0] - 1] != self.last_interrupt[1]) or
+                   (state.memory[self.last_interrupt[0] - 2] != self.last_interrupt[2]))
+
+        if(generate):
+            self.last_interrupt[0] = state.sp
+            self.last_interrupt[1] = state.memory[state.sp - 1] = state.pc >> 8
+            self.last_interrupt[2] = state.memory[state.sp - 2] = state.pc & 0xFF
+            self.last_interrupt[3] = False
+            state.sp -= 2
+            state.pc = interrupt * 8

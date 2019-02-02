@@ -40,9 +40,12 @@ def main(path, cpudiag=False):
 
     while(True):
         interp.ExecInstr(i8080)
-        if(((time.perf_counter() * 1000) - last_interrupt) > 1/60 and i8080.interrupt):
-            # interp.GenerateInterrupt(i8080, 2) It keeps reseting the pc to the interrupt before it could finish
-            last_interrupt = time.perf_counter() * 1000
+        if((time.process_time() - last_interrupt) > 1/60 and i8080.interrupt):
+            # print(time.process_time() - last_interrupt)
+            interp.GenerateInterrupt(i8080, 2) #It keeps reseting the pc to the interrupt before it could finish
+            last_interrupt = time.process_time()
+        """ elif(i8080.interrupt):
+            print("Have to wait more, pc =", hex(i8080.pc)) """
 
         for event in pygame.event.get():
             if(event.type == pygame.KEYDOWN):
@@ -52,7 +55,7 @@ def main(path, cpudiag=False):
             elif(event.type == pygame.QUIT):
                 return
 
-        if(vram != i8080.memory[0x2400:0x3FFF]):  # Drawing is still broken probably
+        if(vram != i8080.memory[0x2400:0x3FFF]):  # Drawing is still broken probably and doesn't have a timer yet
             native.fill(pygame.Color(0, 0, 0, 0))
             for i in range(256):  # Height
                 index = 0x2400 + (i << 5)
@@ -68,13 +71,17 @@ def main(path, cpudiag=False):
             pygame.display.update()
 
 if __name__ == '__main__':
-    try:  # Cpudiag mode
-        main(sys.argv[1], sys.argv[2])
-    except:
-        pass
-
+    cpudiag = False
     try:
-        main(sys.argv[1])
+        sys.argv[2]
+        cpudiag = True
     except:
-        print("Please enter the ROM path as an argument")
-        sys.exit(0)
+        try:
+            sys.argv[1]
+        except:
+            sys.exit("Please enter the ROM path as an argument")
+
+    if(cpudiag):
+        main(sys.argv[1], sys.argv[2])
+    else:
+        main(sys.argv[1])
