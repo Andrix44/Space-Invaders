@@ -11,69 +11,93 @@ except:
     import pygame
 
 
-DEBUG = True
 CLOCK = 2000000  # Hz
 REFRESH = 60  # Hz
 
+class EmuCore():
+    def __init__(self, path, cpudiag=False):
+        pygame.init()
+        self.native = pygame.Surface((224, 256))
+        self.scaled = pygame.display.set_mode((672, 768))
+        pygame.display.set_icon(pygame.image.load("icon.bmp"))
+        pygame.display.set_caption("Space Invaders")
+        pygame.event.set_allowed((pygame.KEYDOWN, pygame.KEYUP, pygame.QUIT, pygame.USEREVENT))
 
-def DebugPrint(text):
-    if(DEBUG):
-        print(text)
+        self.i8080 = Intel8080()
+        self.i8080.cpudiag = cpudiag
+        self.i8080.LoadROM(path)
+        self.interp = Interpreter()
 
+        self.debug = __debug__
+        self.vram = [0] * (0x3FFF - 0x2400)
+        self.last_interrupt_0x8 = 0
+        self.last_interrupt_0x10 = 1/120
+        self.first_interrupt = True
+        self.req_new_frame = False
 
-def main(path, cpudiag=False):
-    pygame.init()
-    native = pygame.Surface((224, 256))
-    scaled = pygame.display.set_mode((672, 768))
-    pygame.display.set_icon(pygame.image.load("icon.bmp"))
-    pygame.display.set_caption("Space Invaders")
+    def DrawFrame(self):  # todo: Add colors
+        self.native.fill(pygame.Color(0, 0, 0, 0))
+        for i in range(256):  # Height
+            index = 0x2400 + (i << 5)
+            for j in range(32):
+                vram_byte = self.i8080.memory[index]
+                index += 1
+                for k in range(8):
+                    if(vram_byte & 1):
+                        self.native.set_at((i, 255 - j*8 - k), pygame.Color(255, 255, 255, 0))
+                    vram_byte = vram_byte >> 1
+        pygame.transform.scale(self.native, (672, 768), self.scaled)
+        pygame.display.update()
+        if(self.debug):
+            self.vram = self.i8080.memory[0x2400:0x3FFF]
+        self.req_new_frame = False
 
-    pygame.event.set_allowed((pygame.KEYDOWN, pygame.KEYUP, pygame.QUIT))
-
-    i8080 = Intel8080()
-    i8080.cpudiag = cpudiag
-    i8080.LoadROM(path)
-    interp = Interpreter()
-
-    vram = [0]
-    last_interrupt = 0
-    req_new_frame = False
-    pygame.time.set_timer(pygame.USEREVENT, 16)
-
-    while(True):
-        interp.ExecInstr(i8080)
-        if((time.process_time() - last_interrupt) > 1/60 and i8080.interrupt):
-            # print(time.process_time() - last_interrupt)
-            interp.GenerateInterrupt(i8080, 2)
-            last_interrupt = time.process_time()
-        """ elif(i8080.interrupt):
-            print("Have to wait more, pc =", hex(i8080.pc)) """
-
+    def HandleEvents(self):
         for event in pygame.event.get():
             if(event.type == pygame.USEREVENT):
-                req_new_frame = True
+                self.req_new_frame = True
             elif(event.type == pygame.KEYDOWN):
                 pass # Key handling
             elif(event.type == pygame.KEYUP):
                 pass # Key handling
             elif(event.type == pygame.QUIT):
-                return
+                sys.exit(0)
 
-        if(vram != i8080.memory[0x2400:0x3FFF] and req_new_frame):  # todo: Add colors
-            req_new_frame = False
-            native.fill(pygame.Color(0, 0, 0, 0))
-            for i in range(256):  # Height
-                index = 0x2400 + (i << 5)
-                for j in range(32):
-                    vram_byte = i8080.memory[index]
-                    index += 1
-                    for k in range(8):
-                        if(vram_byte & 1):
-                            native.set_at((i, 255 - j*8 - k), pygame.Color(255, 255, 255, 0))
-                        vram_byte = vram_byte >> 1
-            vram = i8080.memory[0x2400:0x3FFF]
-            pygame.transform.scale(native, (672, 768), scaled)
-            pygame.display.update()
+    def HandleInterrupts(self):
+        interrupt_executed = False
+        if(((time.process_time() - self.last_interrupt_0x8) > 1/60) and self.i8080.interrupt and self.first_interrupt):
+            self.interp.GenerateInterrupt(self.i8080, 1)
+            self.last_interrupt_0x8 = time.process_time()
+            interrupt_executed = True
+        elif(((time.process_time() - self.last_interrupt_0x10) > 1/60) and self.i8080.interrupt and not self.first_interrupt):
+            self.interp.GenerateInterrupt(self.i8080, 2)
+            self.last_interrupt_0x10 = time.process_time()
+            interrupt_executed = True
+        if(interrupt_executed and not self.i8080.interrupt):
+            self.first_interrupt = not self.first_interrupt
+            interrupt_executed = False
+
+    def Loop(self):
+        self.interp.ExecInstr(self.i8080)
+        self.HandleEvents()
+        self.HandleInterrupts()
+
+        if(self.req_new_frame):
+            if(self.debug):
+                if(self.vram != self.i8080.memory[0x2400:0x3FFF]):  # Without this debug would draw a lot of empty frames due to timing errors
+                    self.DrawFrame()
+            else:
+                self.DrawFrame()
+
+    def Run(self):
+        pygame.time.set_timer(pygame.USEREVENT, 16)
+        #loops = 0
+        while(True):
+            """ if(loops >= 42675):
+                print(hex(i8080.pc), hex(i8080.sp), hex(i8080.a), hex(i8080.b), hex(i8080.c), hex(i8080.d), hex(i8080.e), hex(i8080.h), hex(i8080.l))
+                sys.exit(0)
+            loops += 1 """
+            self.Loop()
 
 if __name__ == '__main__':
     cpudiag = False
@@ -88,6 +112,7 @@ if __name__ == '__main__':
             sys.exit(1)
 
     if(cpudiag):
-        main(sys.argv[1], sys.argv[2])
+        core = EmuCore(sys.argv[1], sys.argv[2])
     else:
-        main(sys.argv[1])
+        core = EmuCore(sys.argv[1])
+    core.Run()

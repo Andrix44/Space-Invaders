@@ -181,10 +181,7 @@ class Interpreter:
             state.AC = eval(f"{reg_a & 0xF}{op}{reg_b & 0xF} > 0xF")
         state.P = (bin(precise & 0xFF).count('1') % 2) == 0  # todo: maybe I should use the full precise result
         if(carry):
-            if("-" in op):
-                state.C = reg_a < reg_b
-            else:
-                state.C = precise > 0xFF
+            state.C = (precise > 0xFF) or (precise < 0)
         return precise & 0xFF
 
     def SetCall(self, state, addr, instr_len=3):
@@ -195,7 +192,6 @@ class Interpreter:
 
     def SetReturn(self, state):
         state.pc = ((state.memory[state.sp + 1] << 8) | state.memory[state.sp])
-        state.memory[state.sp + 1] = state.memory[state.sp] = 0
         state.sp += 2
 
     def Input(self, state, port):  # Right now it will only run in attract mode because of the hardcoded inputs
@@ -221,7 +217,7 @@ class Interpreter:
 
     def CarryBit(self, state):
         if(self.instr == 0x3F):  # CMC
-            state.C = 1 - state.C
+            state.C = not state.C
 
         elif(self.instr == 0x37):  # STC
             state.C = 1
@@ -336,7 +332,6 @@ class Interpreter:
                 high = state.memory[state.sp + 1]
                 self.SetPairValue(state, rp, low, high)
 
-            state.memory[state.sp + 1] = state.memory[state.sp] = 0
             state.sp += 2
 
         elif(descr == 0x9):  # DAD
@@ -501,8 +496,6 @@ class Interpreter:
         state.pc += 2
 
     def Halt(self, state):
-        state.pc += 1
-
         sys.exit("Halt not implemented")
 
 
@@ -512,12 +505,13 @@ class Interpreter:
     def ExecInstr(self, state):
         self.instr = state.memory[state.pc]
 
+        # print(hex(state.pc))
         # print(hex(state.a), hex(state.b), hex(state.c), hex(state.d), hex(state.e), hex(state.h), hex(state.l), hex(state.pc), hex(state.sp))
-        # print('pc =', hex(state.pc), 'instr =', hex(self.instr))  # Can be debugprint later
 
         self.instruction_table[self.instr](state)
 
-        """ assert(state.S == 1 or state.S == 0)
+        """ assert(state.sp > 0x22FF or state.sp == 0)  # If it goes lower, it overwrites data
+        assert(state.S == 1 or state.S == 0)
         assert(state.Z == 1 or state.Z == 0)
         assert(state.P == 1 or state.P == 0)
         assert(state.C == 1 or state.C == 0)
@@ -534,6 +528,8 @@ class Interpreter:
         assert(state.l >= 0 and state.l <= 0xFF) """
 
     def GenerateInterrupt(self, state, interrupt):
+        sys.exit("Do this properly")  # Maybe with an interrupt returned flag?
+
         generate = (self.last_interrupt[3] or
                    (state.memory[self.last_interrupt[0] - 1] != self.last_interrupt[1]) or
                    (state.memory[self.last_interrupt[0] - 2] != self.last_interrupt[2]))
@@ -545,3 +541,4 @@ class Interpreter:
             self.last_interrupt[3] = False
             state.sp -= 2
             state.pc = interrupt * 8
+            state.interrupt = False
