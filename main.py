@@ -1,118 +1,118 @@
 import sys
 import subprocess
+import time
 
 from system import Interpreter, Intel8080
 
 try:
-    from PySide2 import QtCore, QtGui, QtWidgets
+    import pygame
 except:
-    subprocess.call([sys.executable, '-m', 'pip', 'install', 'PySide2'])
-    from PySide2 import QtCore, QtGui, QtWidgets
+    subprocess.call([sys.executable, '-m', 'pip', 'install', 'pygame'])
+    import pygame
 
 
-DEBUG = True
 CLOCK = 2000000  # Hz
 REFRESH = 60  # Hz
 
+class EmuCore():
+    def __init__(self, path, cpudiag=False):
+        pygame.init()
+        self.native = pygame.Surface((224, 256))
+        self.scaled = pygame.display.set_mode((672, 768))
+        pygame.display.set_icon(pygame.image.load("icon.bmp"))
+        pygame.display.set_caption("Space Invaders")
+        pygame.event.set_allowed((pygame.KEYDOWN, pygame.KEYUP, pygame.QUIT, pygame.USEREVENT))
 
-def DebugPrint(text):
-    if(DEBUG):
-        print(text)
+        self.i8080 = Intel8080()
+        self.i8080.cpudiag = cpudiag
+        self.i8080.LoadROM(path)
+        self.interp = Interpreter()
 
+        self.debug = __debug__
+        self.vram = [0] * (0x3FFF - 0x2400)
+        self.last_interrupt_0x8 = 0
+        self.last_interrupt_0x10 = 1/120
+        self.first_interrupt = True
+        self.req_new_frame = False
 
-class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.InitUI()
-
-    def InitUI(self):
-        self.core = EmuCore()
-        self.emu_thread = QtCore.QThread()
-        self.core.moveToThread(self.emu_thread)
-        self.emu_thread.started.connect(self.core.run)
-
-        self.open_act = QtWidgets.QAction('Open ROM', self)
-        self.open_act.triggered.connect(Util.Launch)
-
-        exit_act = QtWidgets.QAction('Exit', self)
-        exit_act.triggered.connect(self.emu_thread.quit)
-        exit_act.triggered.connect(QtWidgets.qApp.quit)
-
-        menubar = self.menuBar()
-        filemenu = menubar.addMenu('File')
-        filemenu.addAction(self.open_act)
-        filemenu.addAction(exit_act)
-
-        self.native = QtGui.QBitmap(224, 256)
-        self.native.fill(QtCore.Qt.color1)
-        self.scaled = QtWidgets.QLabel(self)
-        self.scaled.setPixmap(self.native.scaled(672, 768, QtCore.Qt.KeepAspectRatio))
-        self.setCentralWidget(self.scaled)
-
-        self.painter = QtGui.QPainter(self.native)
-        self.painter.setPen(QtCore.Qt.color0)
-
-        self.setGeometry(624, 146, 672, 788)  # Improve this later
-        self.setWindowTitle('Space Invaders')
-        self.setWindowIcon(QtGui.QIcon('icon.bmp'))
-        self.show()
-
-        self.setFocusPolicy(QtCore.Qt.StrongFocus)
-
-    @QtCore.Slot(list)
-    def Draw(self, state):
-        self.native.fill(QtCore.Qt.color1)
+    def DrawFrame(self):  # todo: Add colors
+        self.native.fill(pygame.Color(0, 0, 0, 0))
         for i in range(256):  # Height
             index = 0x2400 + (i << 5)
             for j in range(32):
-                vram_byte = state.memory[index]
+                vram_byte = self.i8080.memory[index]
                 index += 1
                 for k in range(8):
                     if(vram_byte & 1):
-                        self.painter.drawPoint(i, 255 - j*8 - k)
+                        self.native.set_at((i, 255 - j*8 - k), pygame.Color(255, 255, 255, 0))
                     vram_byte = vram_byte >> 1
+        pygame.transform.scale(self.native, (672, 768), self.scaled)
+        pygame.display.update()
+        if(self.debug):
+            self.vram = self.i8080.memory[0x2400:0x3FFF]
+        self.req_new_frame = False
 
-        self.scaled.setPixmap(ui.native.scaled(672, 768))
-        self.scaled.repaint()
-        return
+    def HandleEvents(self):
+        for event in pygame.event.get():
+            if(event.type == pygame.USEREVENT):
+                self.req_new_frame = True
+            elif(event.type == pygame.KEYDOWN):
+                pass # Key handling
+            elif(event.type == pygame.KEYUP):
+                pass # Key handling
+            elif(event.type == pygame.QUIT):
+                sys.exit(0)
 
-    def keyPressEvent(self, event):
-        print(event.key())
-    
-    def keyReleaseEvent(self, event):
-        print(event.key())
+    def HandleInterrupts(self):
+        interrupt_executed = False
+        if(((time.process_time() - self.last_interrupt_0x8) > 1/60) and self.i8080.interrupt and self.first_interrupt):
+            self.interp.GenerateInterrupt(self.i8080, 1)
+            self.last_interrupt_0x8 = time.process_time()
+            interrupt_executed = True
+        elif(((time.process_time() - self.last_interrupt_0x10) > 1/60) and self.i8080.interrupt and not self.first_interrupt):
+            self.interp.GenerateInterrupt(self.i8080, 2)
+            self.last_interrupt_0x10 = time.process_time()
+            interrupt_executed = True
+        if(interrupt_executed and not self.i8080.interrupt):
+            self.first_interrupt = not self.first_interrupt
+            interrupt_executed = False
 
+    def Loop(self):
+        self.interp.ExecInstr(self.i8080)
+        self.HandleEvents()
+        self.HandleInterrupts()
 
-class Util():
-    @staticmethod
-    def Launch():
-        filepath = QtWidgets.QFileDialog.getOpenFileName(None, 'Open ROM', '', 'Space Invaders ROM (*.*)')
-        if(filepath[0] != ''):
-            ui.core.romname = filepath[0]
-            ui.emu_thread.start()
+        if(self.req_new_frame):
+            if(self.debug):
+                if(self.vram != self.i8080.memory[0x2400:0x3FFF]):  # Without this debug would draw a lot of empty frames due to timing errors
+                    self.DrawFrame()
+            else:
+                self.DrawFrame()
 
-
-class EmuCore(QtCore.QObject):
-    gfx_upl = QtCore.Signal(list)
-
-    def __init__(self):
-        super().__init__()
-        self.romname = ''
-
-    def run(self):
-        i8080 = Intel8080()
-        i8080.LoadROM(self.romname)
-        interp = Interpreter()
-
-        ui.open_act.setEnabled(False)
-
-        self.gfx_upl.connect(ui.Draw, type=QtCore.Qt.DirectConnection)
+    def Run(self):
+        pygame.time.set_timer(pygame.USEREVENT, 16)
+        #loops = 0
         while(True):
-            interp.ExecInstr(i8080)
-            self.gfx_upl.emit(i8080)
-
+            """ if(loops >= 42675):
+                print(hex(i8080.pc), hex(i8080.sp), hex(i8080.a), hex(i8080.b), hex(i8080.c), hex(i8080.d), hex(i8080.e), hex(i8080.h), hex(i8080.l))
+                sys.exit(0)
+            loops += 1 """
+            self.Loop()
 
 if __name__ == '__main__':
-    app = QtWidgets.QApplication(sys.argv)
-    ui = MainWindow()
-    sys.exit(app.exec_())
+    cpudiag = False
+    try:
+        sys.argv[2]
+        cpudiag = True
+    except:
+        try:
+            sys.argv[1]
+        except:
+            print("Please enter the ROM path as an argument")
+            sys.exit(1)
+
+    if(cpudiag):
+        core = EmuCore(sys.argv[1], sys.argv[2])
+    else:
+        core = EmuCore(sys.argv[1])
+    core.Run()
