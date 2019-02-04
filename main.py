@@ -3,6 +3,7 @@ import subprocess
 import time
 
 from system import Interpreter, Intel8080
+import draw
 
 try:
     import pygame
@@ -37,15 +38,7 @@ class EmuCore():
 
     def DrawFrame(self):  # todo: Add colors
         self.native.fill(pygame.Color(0, 0, 0, 0))
-        for i in range(256):  # Height
-            index = 0x2400 + (i << 5)
-            for j in range(32):
-                vram_byte = self.i8080.memory[index]
-                index += 1
-                for k in range(8):
-                    if(vram_byte & 1):
-                        self.native.set_at((i, 255 - j*8 - k), pygame.Color(255, 255, 255, 0))
-                    vram_byte = vram_byte >> 1
+        draw.DrawFrame(self.native, self.i8080.memory)
         pygame.transform.scale(self.native, (672, 768), self.scaled)
         pygame.display.update()
         if(self.debug):
@@ -77,27 +70,19 @@ class EmuCore():
             self.first_interrupt = not self.first_interrupt
             interrupt_executed = False
 
-    def Loop(self):
-        self.interp.ExecInstr(self.i8080)
-        self.HandleEvents()
-        self.HandleInterrupts()
-
-        if(self.req_new_frame):
-            if(self.debug):
-                if(self.vram != self.i8080.memory[0x2400:0x3FFF]):  # Without this debug would draw a lot of empty frames due to timing errors
-                    self.DrawFrame()
-            else:
-                self.DrawFrame()
-
     def Run(self):
         pygame.time.set_timer(pygame.USEREVENT, 16)
-        #loops = 0
         while(True):
-            """ if(loops >= 42675):
-                print(hex(i8080.pc), hex(i8080.sp), hex(i8080.a), hex(i8080.b), hex(i8080.c), hex(i8080.d), hex(i8080.e), hex(i8080.h), hex(i8080.l))
-                sys.exit(0)
-            loops += 1 """
-            self.Loop()
+            self.interp.ExecInstr(self.i8080)
+            self.HandleEvents()
+            self.HandleInterrupts()
+
+            if(self.req_new_frame):
+                if(self.debug):
+                    if(self.vram != self.i8080.memory[0x2400:0x3FFF]):  # Without this debug would draw a lot of empty frames due to timing errors
+                        self.DrawFrame()
+                else:
+                    self.DrawFrame()
 
 if __name__ == '__main__':
     cpudiag = False

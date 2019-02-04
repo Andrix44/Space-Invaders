@@ -33,7 +33,8 @@ class Interpreter:
     def __init__(self):
         self.operator = ("+", "+ state.C +", "-", "- state.C -", "&", "^", "|")
         self.registers = ("state.b", "state.c", "state.d", "state.e", "state.h", "state.l", "state.memory[(state.h << 8) | state.l]", "state.a")
-        self.last_interrupt = [0, 0, 0, True]  # The fourth is for the first time it generates an interrupt
+        self.interrupt_returned = True
+        self.enable_interrupt_next_time = False
         self.cached_operations = {}
 
         self.instruction_table = (self.NoOperation, self.Immediate, self.DataTransfer,
@@ -509,6 +510,13 @@ class Interpreter:
         # print(hex(state.a), hex(state.b), hex(state.c), hex(state.d), hex(state.e), hex(state.h), hex(state.l), hex(state.pc), hex(state.sp))
 
         self.instruction_table[self.instr](state)
+        
+        if(self.enable_interrupt_next_time):
+            #print("Interrupt returned", "pc=", state.pc, "sp=", state.sp)
+            self.interrupt_returned = True
+            self.enable_interrupt_next_time = False
+        elif(state.pc == 0x87):
+            self.enable_interrupt_next_time = True
 
         """ assert(state.sp > 0x22FF or state.sp == 0)  # If it goes lower, it overwrites data
         assert(state.S == 1 or state.S == 0)
@@ -528,17 +536,11 @@ class Interpreter:
         assert(state.l >= 0 and state.l <= 0xFF) """
 
     def GenerateInterrupt(self, state, interrupt):
-        sys.exit("Do this properly")  # Maybe with an interrupt returned flag?
-
-        generate = (self.last_interrupt[3] or
-                   (state.memory[self.last_interrupt[0] - 1] != self.last_interrupt[1]) or
-                   (state.memory[self.last_interrupt[0] - 2] != self.last_interrupt[2]))
-
-        if(generate):
-            self.last_interrupt[0] = state.sp
-            self.last_interrupt[1] = state.memory[state.sp - 1] = state.pc >> 8
-            self.last_interrupt[2] = state.memory[state.sp - 2] = state.pc & 0xFF
-            self.last_interrupt[3] = False
+        if(self.interrupt_returned == True):
+            #print("Entering interrupt", interrupt, "pc=", state.pc, "sp=", state.sp)
+            self.interrupt_returned = False
+            state.memory[state.sp - 1] = state.pc >> 8
+            state.memory[state.sp - 2] = state.pc & 0xFF
             state.sp -= 2
             state.pc = interrupt * 8
             state.interrupt = False
