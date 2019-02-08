@@ -35,19 +35,28 @@ class EmuCore():
         self.last_interrupt_0x8 = 0
         self.last_interrupt_0x10 = 1/120
         self.first_interrupt = True
-        self.req_new_frame = False
 
     def DrawFrame(self):  # todo: Add colors
         self.native.fill(pygame.Color(0, 0, 0, 0))
         hotcode.GenBitmap(self.native, self.i8080.memory)
         pygame.transform.scale(self.native, (672, 768), self.scaled)
         pygame.display.update()
-        self.req_new_frame = False
+
+    def Run(self):
+        config = 0
+        while(True):
+            self.interp.ExecInstr(self.i8080)
+            if(config == 64):  # todo: do something with this
+                self.HandleEvents()
+                self.HandleInterrupts()
+                config = 0
+            else:
+                config += 1
 
     def HandleEvents(self):
         for event in pygame.event.get():
             if(event.type == pygame.USEREVENT):
-                self.req_new_frame = True
+                self.DrawFrame()
             elif(event.type == pygame.KEYDOWN):
                 pass # Key handling
             elif(event.type == pygame.KEYUP):
@@ -58,11 +67,11 @@ class EmuCore():
     def HandleInterrupts(self):
         interrupt_executed = False
         curr_time = time.process_time()  # It should be fine to use this for all of them
-        if(((curr_time - self.last_interrupt_0x8) > 1/60) and self.i8080.interrupt and self.first_interrupt):
+        if(((curr_time - self.last_interrupt_0x8) > 1/600) and self.i8080.interrupt and self.first_interrupt):
             self.interp.GenerateInterrupt(self.i8080, 1)
             self.last_interrupt_0x8 = curr_time
             interrupt_executed = True
-        elif(((curr_time - self.last_interrupt_0x10) > 1/60) and self.i8080.interrupt and not self.first_interrupt):
+        elif(((curr_time - self.last_interrupt_0x10) > 1/600) and self.i8080.interrupt and not self.first_interrupt):
             self.interp.GenerateInterrupt(self.i8080, 2)
             self.last_interrupt_0x10 = curr_time
             interrupt_executed = True
@@ -70,7 +79,6 @@ class EmuCore():
             self.first_interrupt = not self.first_interrupt
             interrupt_executed = False
 
-    
 
 if __name__ == '__main__':
     cpudiag = False
@@ -88,4 +96,4 @@ if __name__ == '__main__':
         core = EmuCore(sys.argv[1], sys.argv[2])
     else:
         core = EmuCore(sys.argv[1])
-    hotcode.Run(core)
+    core.Run()
