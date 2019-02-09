@@ -33,8 +33,6 @@ class Interpreter:
     def __init__(self):
         self.operator = ("+", "+ state.C +", "-", "- state.C -", "&", "^", "|")
         self.registers = ("state.b", "state.c", "state.d", "state.e", "state.h", "state.l", "state.memory[(state.h << 8) | state.l]", "state.a")
-        self.interrupt_returned = True
-        self.enable_interrupt_next_time = False
         self.cached_operations = {}
 
         self.instruction_table = (self.NoOperation, self.Immediate, self.DataTransfer,
@@ -180,7 +178,7 @@ class Interpreter:
         state.Z = (precise & 0xFF) == 0
         if(auxiliary and False):  # This is costly and DAA is not implemented anyway so I disabled it
             state.AC = eval(f"{reg_a & 0xF}{op}{reg_b & 0xF} > 0xF")
-        state.P = (bin(precise & 0xFF).count('1') % 2) == 0  # todo: maybe I should use the full precise result
+        state.P = (bin(precise & 0xFF).count('1') % 2) == 0
         if(carry):
             state.C = (precise > 0xFF) or (precise < 0)
         return precise & 0xFF
@@ -510,13 +508,6 @@ class Interpreter:
         # print(hex(state.a), hex(state.b), hex(state.c), hex(state.d), hex(state.e), hex(state.h), hex(state.l), hex(state.pc), hex(state.sp))
 
         self.instruction_table[self.instr](state)
-        
-        if(self.enable_interrupt_next_time):
-            #print("Interrupt returned", "pc=", state.pc, "sp=", state.sp)
-            self.interrupt_returned = True
-            self.enable_interrupt_next_time = False
-        elif(state.pc == 0x87):
-            self.enable_interrupt_next_time = True
 
         """ assert(state.sp > 0x22FF or state.sp == 0)  # If it goes lower, it overwrites data
         assert(state.S == 1 or state.S == 0)
@@ -536,11 +527,9 @@ class Interpreter:
         assert(state.l >= 0 and state.l <= 0xFF) """
 
     def GenerateInterrupt(self, state, interrupt):
-        if(self.interrupt_returned == True):
-            #print("Entering interrupt", interrupt, "pc=", state.pc, "sp=", state.sp)
-            self.interrupt_returned = False
-            state.memory[state.sp - 1] = state.pc >> 8
-            state.memory[state.sp - 2] = state.pc & 0xFF
-            state.sp -= 2
-            state.pc = interrupt * 8
-            state.interrupt = False
+        # print("Entering interrupt", interrupt, "pc=", state.pc, "sp=", state.sp)
+        state.memory[state.sp - 1] = state.pc >> 8
+        state.memory[state.sp - 2] = state.pc & 0xFF
+        state.sp -= 2
+        state.pc = interrupt * 8
+        state.interrupt = False
