@@ -203,8 +203,8 @@ class Interpreter:
         elif(port == 2):
             return 0
         elif(port == 3):
-            temp = (state.shift_hi << 8) | state.shift_lo
-            return (temp >> (8 - state.shift_offset))
+            temp = format((state.shift_hi << 8) | state.shift_lo, "016b")
+            return int(temp[state.shift_offset: state.shift_offset + 8], 2)
     
     def Output(self, state, port):
         if(port == 2):
