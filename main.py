@@ -11,9 +11,10 @@ except:
     subprocess.call([sys.executable, '-m', 'pip', 'install', 'pygame'])
     import pygame
 
-
-CLOCK = 2000000  # Hz
-REFRESH = 60  # Hz
+CLOCKSPEED = 2000000
+REFRESH_RATE = 60
+CYCLES_PER_FRAME = int(CLOCKSPEED / REFRESH_RATE)
+CYCLES_PER_HALF_FRAME = int(CYCLES_PER_FRAME / 2)
 
 class EmuCore():
     def __init__(self, path, cpudiag=False):
@@ -23,8 +24,7 @@ class EmuCore():
         pygame.display.set_icon(pygame.image.load("icon.bmp"))
         pygame.display.set_caption("Space Invaders")
         pygame.event.set_allowed(None)
-        pygame.event.set_allowed((pygame.KEYDOWN, pygame.KEYUP, pygame.QUIT, pygame.USEREVENT))
-        pygame.time.set_timer(pygame.USEREVENT, 16)
+        pygame.event.set_allowed((pygame.KEYDOWN, pygame.KEYUP, pygame.QUIT))
 
         self.i8080 = Intel8080()
         self.i8080.cpudiag = cpudiag
@@ -36,6 +36,22 @@ class EmuCore():
         self.last_interrupt_0x10 = 1/120
         self.first_interrupt = True
 
+    def RunFrame(self):
+        interrupt_1 = True
+        cycles = cycle_tot = cycle_var = 0
+        while(cycle_tot <= CYCLES_PER_FRAME):
+            cycles = self.interp.ExecInstr(self.i8080)
+            cycle_tot += cycles
+            cycle_var += cycles
+
+            if(cycle_var >= CYCLES_PER_HALF_FRAME - 19 and self.i8080.interrupt):  # Make sure the second interrupt gets called
+                if(interrupt_1):
+                    self.interp.GenerateInterrupt(self.i8080, 1)
+                    interrupt_1 = False
+                    cycle_var = 0
+                else:
+                    self.interp.GenerateInterrupt(self.i8080, 2)
+
     def DrawFrame(self):  # todo: Add colors
         self.native.fill(pygame.Color(0, 0, 0, 0))
         hotcode.GenBitmap(self.native, self.i8080.memory)
@@ -43,42 +59,21 @@ class EmuCore():
         pygame.display.update()
 
     def Run(self):
-        config = 0
+        clock = pygame.time.Clock()
         while(True):
-            self.interp.ExecInstr(self.i8080)
-            if(config == 64):  # todo: do something with this
-                self.HandleEvents()
-                self.HandleInterrupts()
-                config = 0
-            else:
-                config += 1
+            clock.tick(REFRESH_RATE)
+            self.HandleEvents()
+            self.RunFrame()
+            self.DrawFrame()
 
     def HandleEvents(self):
         for event in pygame.event.get():
-            if(event.type == pygame.USEREVENT):
-                self.DrawFrame()
-            elif(event.type == pygame.KEYDOWN):
+            if(event.type == pygame.KEYDOWN):
                 pass # Key handling
             elif(event.type == pygame.KEYUP):
                 pass # Key handling
             elif(event.type == pygame.QUIT):
                 sys.exit(0)
-
-    def HandleInterrupts(self):
-        interrupt_executed = False
-        curr_time = time.process_time()  # It should be fine to use this for all of them
-        if(((curr_time - self.last_interrupt_0x8) > 1/600) and self.i8080.interrupt and self.first_interrupt):
-            self.interp.GenerateInterrupt(self.i8080, 1)
-            self.last_interrupt_0x8 = curr_time
-            interrupt_executed = True
-        elif(((curr_time - self.last_interrupt_0x10) > 1/600) and self.i8080.interrupt and not self.first_interrupt):
-            self.interp.GenerateInterrupt(self.i8080, 2)
-            self.last_interrupt_0x10 = curr_time
-            interrupt_executed = True
-        if(interrupt_executed and not self.i8080.interrupt):
-            self.first_interrupt = not self.first_interrupt
-            interrupt_executed = False
-
 
 if __name__ == '__main__':
     cpudiag = False

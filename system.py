@@ -31,6 +31,8 @@ class Intel8080:
 
 class Interpreter:
     def __init__(self):
+        self.condition_met = False
+
         self.operator = ("+", "+ state.C +", "-", "- state.C -", "&", "^", "|")
         self.registers = ("state.b", "state.c", "state.d", "state.e", "state.h", "state.l", "state.memory[(state.h << 8) | state.l]", "state.a")
         self.cached_operations = {}
@@ -121,6 +123,23 @@ class Interpreter:
                                   self.RegisterPair, self.Jump, self.Interrupt,
                                   self.CallSubroutine, self.NoOperation, self.Immediate,
                                   self.RST)
+
+        self.cycle_table = (4, 10, 7,  5,  5,  5,  7,  4,  4, 10, 7,  5,  5,  5,  7, 4,   # 0x0X
+                            4, 10, 7,  5,  5,  5,  7,  4,  4, 10, 7,  5,  5,  5,  7, 4,   # 0x1X
+                            4, 10, 16, 5,  5,  5,  7,  4,  4, 10, 16, 5,  5,  5,  7, 4,   # 0x2X
+                            4, 10, 13, 5,  10, 10, 10, 4,  4, 10, 13, 5,  5,  5,  7, 4,   # 0x3X
+                            5, 5,  5,  5,  5,  5,  7,  5,  5, 5,  5,  5,  5,  5,  7, 5,   # 0x4X
+                            5, 5,  5,  5,  5,  5,  7,  5,  5, 5,  5,  5,  5,  5,  7, 5,   # 0x5X
+                            5, 5,  5,  5,  5,  5,  7,  5,  5, 5,  5,  5,  5,  5,  7, 5,   # 0x6X
+                            7, 7,  7,  7,  7,  7,  7,  7,  5, 5,  5,  5,  5,  5,  7, 5,   # 0x7X
+                            4, 4,  4,  4,  4,  4,  7,  4,  4, 4,  4,  4,  4,  4,  7, 4,   # 0x8X
+                            4, 4,  4,  4,  4,  4,  7,  4,  4, 4,  4,  4,  4,  4,  7, 4,   # 0x9X
+                            4, 4,  4,  4,  4,  4,  7,  4,  4, 4,  4,  4,  4,  4,  7, 4,   # 0xAX
+                            4, 4,  4,  4,  4,  4,  7,  4,  4, 4,  4,  4,  4,  4,  7, 4,   # 0xBX
+                            5, 10, 10, 10, 11, 11, 7,  11, 5, 10, 10, 10, 11, 17, 7, 11,  # 0xCX
+                            5, 10, 10, 10, 11, 11, 7,  11, 5, 10, 10, 10, 11, 11, 7, 11,  # 0xDX
+                            5, 10, 10, 18, 11, 11, 7,  11, 5, 5,  10, 5,  11, 11, 7, 11,  # 0xEX
+                            5, 10, 10, 4,  11, 11, 7,  11, 5, 5,  10, 4,  11, 11, 7, 11)  # 0xFX
 
     def GetRegValue(self, state, reg):
         if(reg == 6):  # It might try to access an invalid memory region otherwise
@@ -458,6 +477,7 @@ class Interpreter:
         op = (self.instr >> 3) & 0x7
         if(self.CheckCondition(state, op)):  # CNZ, CZ, CNC, CC, CPO, CPE, CP, CM
             self.SetCall(state, addr)
+            self.condition_met = True
         else:
             state.pc += 3
 
@@ -469,6 +489,7 @@ class Interpreter:
         op = (self.instr >> 3) & 0x7
         if(self.CheckCondition(state, op)):  # RNZ, RZ, RNC, RC, RPO, RPE, RP, RM
             self.SetReturn(state)
+            self.condition_met = True
         else:
             state.pc += 1
 
@@ -502,12 +523,17 @@ class Interpreter:
 ############################################################################################################
 
     def ExecInstr(self, state):
+        cycles = 0
         self.instr = state.memory[state.pc]
 
         # print(hex(state.pc))
         # print(hex(state.a), hex(state.b), hex(state.c), hex(state.d), hex(state.e), hex(state.h), hex(state.l), hex(state.pc), hex(state.sp))
 
         self.instruction_table[self.instr](state)
+        cycles = self.cycle_table[self.instr]
+        if(self.condition_met):
+            cycles += 6
+            self.condition_met = False
 
         """ assert(state.sp > 0x22FF or state.sp == 0)  # If it goes lower, it overwrites data
         assert(state.S == 1 or state.S == 0)
@@ -525,6 +551,8 @@ class Interpreter:
         assert(state.e >= 0 and state.e <= 0xFF)
         assert(state.h >= 0 and state.h <= 0xFF)
         assert(state.l >= 0 and state.l <= 0xFF) """
+
+        return cycles
 
     def GenerateInterrupt(self, state, interrupt):
         # print("Entering interrupt", interrupt, "pc=", state.pc, "sp=", state.sp)
