@@ -222,7 +222,7 @@ class Interpreter:
         elif(port == 3):
             temp = format((state.shift_hi << 8) | state.shift_lo, "016b")
             return int(temp[state.shift_offset: state.shift_offset + 8], 2)
-    
+
     def Output(self, state, port):
         if(port == 2):
             state.shift_offset = state.a & 0x7

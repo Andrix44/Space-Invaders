@@ -31,11 +31,6 @@ class EmuCore():
         self.i8080.LoadROM(path)
         self.interp = Interpreter()
 
-        self.vram = [0] * (0x3FFF - 0x2400)
-        self.last_interrupt_0x8 = 0
-        self.last_interrupt_0x10 = 1/120
-        self.first_interrupt = True
-
     def RunFrame(self):
         interrupt_1 = True
         cycles = cycle_tot = cycle_var = 0
