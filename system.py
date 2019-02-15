@@ -9,7 +9,7 @@ class Intel8080:
         self.S = self.Z = self.AC = self.P = self.C = 0
         self.pc = self.sp = 0
         self.shift_hi = self.shift_lo = self.shift_offset = 0
-        self.interrupt = 0
+        self.interrupt = False
 
         self.cpudiag = False
 
@@ -329,7 +329,7 @@ class Interpreter:
         if(descr == 0xC5):  # PUSH
             if(rp == 3):  # PSW
                 state.memory[state.sp - 1] = state.a
-                state.memory[state.sp - 2] = (state.S << 7) | (state.Z << 6) | (state.AC << 4) | (state.P << 2) | (state.C << 7)
+                state.memory[state.sp - 2] = (state.S << 7) | (state.Z << 6) | (state.AC << 4) | (state.P << 2) | state.C
             else:  # B, D, H
                 pair_value = self.GetPairValue(state, rp)
                 state.memory[state.sp - 1] = pair_value >> 8
@@ -499,9 +499,9 @@ class Interpreter:
 
     def Interrupt(self, state):
         if((self.instr >> 3) & 0x1):  # EI
-            state.interrupt = 1
+            state.interrupt = True
         else:  # DI
-            state.interrupt = 0
+            state.interrupt = False
 
         state.pc += 1
 
