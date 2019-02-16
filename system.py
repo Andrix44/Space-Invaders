@@ -190,15 +190,18 @@ class Interpreter:
                  not state.P, state.P, not state.S, state.S)
         return conds[condition]
 
-    def SetFlagsCalc(self, state, reg_a, op, reg_b, carry=False, auxiliary=True):
-        op = f"{reg_a}{op}{reg_b}"
+    def SetFlagsCalc(self, state, reg_a, operator, reg_b, carry=False, auxiliary=True):
+        op = f"{reg_a}{operator}{reg_b}"
         if(op not in self.cached_operations):
             self.cached_operations[op] = compile(op, "", "eval")
         precise = eval(self.cached_operations[op])
         state.S = (precise & 0x80) >> 7
         state.Z = (precise & 0xFF) == 0
-        if(auxiliary and False):  # This is costly and DAA is not implemented anyway so I disabled it
-            state.AC = eval(f"{reg_a & 0xF}{op}{reg_b & 0xF} > 0xF")
+        if(auxiliary):
+            aux_op = f"(({reg_a} & 0xF) {operator} ({reg_b} & 0xF)) > 0xF"
+            if(aux_op not in self.cached_operations):
+                self.cached_operations[aux_op] = compile(aux_op, "", "eval")
+            state.AC = eval(self.cached_operations[aux_op])
         state.P = (bin(precise & 0xFF).count('1') % 2) == 0
         if(carry):
             state.C = (precise > 0xFF) or (precise < 0)
