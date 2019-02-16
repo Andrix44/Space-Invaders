@@ -10,6 +10,8 @@ class Intel8080:
         self.pc = self.sp = 0
         self.shift_hi = self.shift_lo = self.shift_offset = 0
         self.interrupt = False
+        self.input_byte_1 = 1
+        self.input_byte_2 = 0
 
         self.cpudiag = False
 
@@ -213,12 +215,10 @@ class Interpreter:
         state.sp += 2
 
     def Input(self, state, port):  # Right now it will only run in attract mode because of the hardcoded inputs
-        if(port == 0):
-            return 1
-        elif(port == 1):
-            return 0
+        if(port == 1):
+            return state.input_byte_1
         elif(port == 2):
-            return 0
+            return state.input_byte_2
         elif(port == 3):
             temp = format((state.shift_hi << 8) | state.shift_lo, "016b")
             return int(temp[state.shift_offset: state.shift_offset + 8], 2)
