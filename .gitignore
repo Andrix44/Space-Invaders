@@ -266,3 +266,5 @@ ROMS/
 *.pyperf
 *.pyd
 *.c
+*.pyproj
+*.sln
