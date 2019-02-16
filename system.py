@@ -256,15 +256,19 @@ class Interpreter:
             state.a = 0xFF - state.a
 
         elif(self.instr == 0x27):  # DAA
-            sys.exit("DAA unimplemented")
-            """ if((state.a & 0xF) > 9 or state.AC):
-                state.a = (state.a + 6) & 0xFF
-                state.AC = True
-                #state.a = self.SetFlagsCalc(state, "state.a", "+", "6")
-                if(((state.a & 0xF0) >> 4) > 9 or state.C):
-                    state.S = ((state.a + 0x60) & 0x80) >> 7
-                    state.C = (state.a + 0x60) > 0xFF
-                    state.a = (state.a + 0x60) & 0xFF """
+            if((state.a & 0xF) > 9 or state.AC):
+                temp_low = state.a & 0xF
+                temp_high = state.a >> 4
+                temp_low += 6
+                state.AC = temp_low > 0xF
+                state.a =  (temp_high << 4) | (temp_low & 0xF)
+            if((state.a >> 4) > 9 or state.C):
+                temp_low = state.a & 0xF
+                temp_high = state.a >> 4
+                temp_high += 6
+                if(temp_high > 0xF):
+                    state.C = True
+                state.a =  ((temp_high & 0xF) << 4) | temp_low
 
         state.pc += 1
 
