@@ -88,7 +88,7 @@ class EmuCore():
                 elif(key == "up"): self.i8080.input_byte_2 |= 0b00010000
                 elif(key == "right ctrl"): self.i8080.input_byte_1 |= 0b00000010
                 elif(key == "space"): self.i8080.input_byte_2 |= 0b00000100
-                # Dipswitches(they don't need a keyup event), coin insertion and exit:
+                # Dipswitches(they don't need a keyup event) and exit:
                 elif(key == "return"): self.i8080.input_byte_1 &= 0b11111110
                 elif(key == "`"): self.i8080.input_byte_2 &= 0b11111100
                 elif(key == "1"): self.i8080.input_byte_2 &= 0b11111100; self.i8080.input_byte_2 += 1
@@ -110,6 +110,7 @@ class EmuCore():
                 elif(key == "up"): self.i8080.input_byte_2 &= 0b11101111
                 elif(key == "right ctrl"): self.i8080.input_byte_1 &= 0b11111101
                 elif(key == "space"): self.i8080.input_byte_2 &= 0b11111011
+                elif(key == "return"): self.i8080.input_byte_1 |= 0b1
             elif(event.type == pygame.QUIT):
                 sys.exit(0)
 
