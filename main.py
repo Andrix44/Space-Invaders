@@ -39,7 +39,7 @@ class EmuCore():
             cycle_tot += cycles
             cycle_var += cycles
 
-            if(cycle_var >= CYCLES_PER_HALF_FRAME - 19 and self.i8080.interrupt):  # Make sure the second interrupt gets called
+            if(cycle_var >= CYCLES_PER_HALF_FRAME - 19 and self.i8080.interrupt):  # Make sure the second interrupt gets called by making the first execute a bit earlier
                 if(interrupt_1):
                     self.interp.GenerateInterrupt(self.i8080, 1)
                     interrupt_1 = False

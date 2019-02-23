@@ -578,39 +578,16 @@ class Interpreter:
 ############################################################################################################
 
     def ExecInstr(self, state):
-        cycles = 0
         self.instr = state.memory[state.pc]
-
-        # print(hex(state.pc))
-        # print(hex(state.a), hex(state.b), hex(state.c), hex(state.d), hex(state.e), hex(state.h), hex(state.l), hex(state.pc), hex(state.sp))
-
         self.instruction_table[self.instr](state)
+
         cycles = self.cycle_table[self.instr]
         if(self.condition_met):
             cycles += 6
             self.condition_met = False
-
-        """ assert(state.sp > 0x22FF or state.sp == 0)  # If it goes lower, it overwrites data
-        assert(state.S == 1 or state.S == 0)
-        assert(state.Z == 1 or state.Z == 0)
-        assert(state.P == 1 or state.P == 0)
-        assert(state.C == 1 or state.C == 0)
-
-        assert(state.pc >= 0 and state.sp <= 0xFFFF)
-        assert(state.sp >= 0 and state.sp <= 0xFFFF)
-
-        assert(state.a >= 0 and state.a <= 0xFF)
-        assert(state.b >= 0 and state.b <= 0xFF)
-        assert(state.c >= 0 and state.c <= 0xFF)
-        assert(state.d >= 0 and state.d <= 0xFF)
-        assert(state.e >= 0 and state.e <= 0xFF)
-        assert(state.h >= 0 and state.h <= 0xFF)
-        assert(state.l >= 0 and state.l <= 0xFF) """
-
         return cycles
 
     def GenerateInterrupt(self, state, interrupt):
-        # print("Entering interrupt", interrupt, "pc=", state.pc, "sp=", state.sp)
         state.memory[state.sp - 1] = state.pc >> 8
         state.memory[state.sp - 2] = state.pc & 0xFF
         state.sp -= 2
