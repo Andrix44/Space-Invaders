@@ -15,3 +15,5 @@ You need to have Pygame and Cython installed with pip, then you can run build.ba
                                                   5: 1500 points
                       numbers 6-7 - coin info 6: off
                                               7: on
+## Sounds
+You need to have all of the 0.wav - 8.wav (9 files) sounds inside a folder named "samples", for example "samples/4.wav". If not all files are present, all sounds will be disabled.

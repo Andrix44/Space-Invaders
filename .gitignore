@@ -261,6 +261,7 @@ __pycache__/
 *.pyc
 
 ROMS/
+samples/
 .vscode/
 
 *.pyperf

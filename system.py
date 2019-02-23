@@ -1,3 +1,4 @@
+import pygame
 import sys
 import os
 
@@ -34,6 +35,10 @@ class Intel8080:
 class Interpreter:
     def __init__(self):
         self.condition_met = False
+
+        self.audio_enabled = self.SetupAudio()
+        self.last_out_3 = self.last_out_5 = 0
+
 
         self.operator = ("+", "+ state.C +", "-", "- state.C -", "&", "^", "|")
         self.registers = ("state.b", "state.c", "state.d", "state.e", "state.h", "state.l", "state.memory[(state.h << 8) | state.l]", "state.a")
@@ -143,6 +148,23 @@ class Interpreter:
                             5, 10, 10, 18, 11, 11, 7,  11, 5, 5,  10, 5,  11, 11, 7, 11,  # 0xEX
                             5, 10, 10, 4,  11, 11, 7,  11, 5, 5,  10, 4,  11, 11, 7, 11)  # 0xFX
 
+    def SetupAudio(self):
+        try:
+            self.sound_ufo = pygame.mixer.Sound("samples/0.wav")
+            self.sound_shot = pygame.mixer.Sound("samples/1.wav")
+            self.sound_flash = pygame.mixer.Sound("samples/2.wav")
+            self.sound_death = pygame.mixer.Sound("samples/3.wav")
+            self.sound_fleet_1 = pygame.mixer.Sound("samples/4.wav")
+            self.sound_fleet_2 = pygame.mixer.Sound("samples/5.wav")
+            self.sound_fleet_3 = pygame.mixer.Sound("samples/6.wav")
+            self.sound_fleet_4 = pygame.mixer.Sound("samples/7.wav")
+            self.sound_ufo_hit = pygame.mixer.Sound("samples/8.wav")
+            return True
+        except:
+            print("Error while loading sound samples, please refer to the readme for more info.",
+                "Audio disabled.")
+            return False
+
     def GetRegValue(self, state, reg):
         if(reg == 6):  # It might try to access an invalid memory region otherwise
             return state.memory[(state.h << 8) | state.l]
@@ -217,7 +239,7 @@ class Interpreter:
         state.pc = ((state.memory[state.sp + 1] << 8) | state.memory[state.sp])
         state.sp += 2
 
-    def Input(self, state, port):  # Right now it will only run in attract mode because of the hardcoded inputs
+    def Input(self, state, port):
         if(port == 1):
             return state.input_byte_1
         elif(port == 2):
@@ -229,9 +251,35 @@ class Interpreter:
     def Output(self, state, port):
         if(port == 2):
             state.shift_offset = state.a & 0x7
+        elif(port == 3):
+            if(self.audio_enabled and self.last_out_3 != state.a):
+                if(state.a & 1 and not self.last_out_3 & 1):
+                    self.sound_ufo.play(-1)
+                elif(not state.a & 1 and self.last_out_3 & 1):
+                    self.sound_ufo.stop()
+                if(state.a & 2 and not self.last_out_3 & 2):
+                    self.sound_shot.play()
+                if(state.a & 4 and not self.last_out_3 & 4):
+                    self.sound_flash.play()
+                if(state.a & 8 and not self.last_out_3 & 8):
+                    self.sound_death.play()
+                self.last_out_3 = state.a
         elif(port == 4):
             state.shift_lo = state.shift_hi
             state.shift_hi = state.a
+        elif(port == 5):
+            if(self.audio_enabled and self.last_out_5 != state.a):
+                if(state.a & 1 and not self.last_out_5 & 1):
+                    self.sound_fleet_1.play()
+                if(state.a & 2 and not self.last_out_5 & 2):
+                    self.sound_fleet_2.play()
+                if(state.a & 4 and not self.last_out_5 & 4):
+                    self.sound_fleet_3.play()
+                if(state.a & 8 and not self.last_out_5 & 8):
+                    self.sound_fleet_4.play()
+                if(state.a & 16 and not self.last_out_5 & 16):
+                    self.sound_ufo_hit.play()
+                self.last_out_5 = state.a
 
 ############################################################################################################
 ############################################################################################################
