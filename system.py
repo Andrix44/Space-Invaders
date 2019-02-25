@@ -24,13 +24,6 @@ class Intel8080:
                 else:
                     self.memory[i] = ord(rom.read(1))
 
-        if(self.cpudiag):
-            self.pc = 0x100  # The program starts from 0x100
-            self.memory[0x170] = 0x7  # Patch a bug
-            self.memory[0x59C] = 0xC3  # Patch the check for DAA
-            self.memory[0x59D] = 0xC2  #
-            self.memory[0x59E] = 0x5   #
-
 
 class Interpreter:
     def __init__(self):
@@ -309,17 +302,15 @@ class Interpreter:
         elif(self.instr == 0x27):  # DAA
             if((state.a & 0xF) > 9 or state.AC):
                 temp_low = state.a & 0xF
-                temp_high = state.a >> 4
                 temp_low += 6
                 state.AC = temp_low > 0xF
-                state.a =  (temp_high << 4) | (temp_low & 0xF)
+                state.a += 6
             if((state.a >> 4) > 9 or state.C):
-                temp_low = state.a & 0xF
                 temp_high = state.a >> 4
                 temp_high += 6
                 if(temp_high > 0xF):
                     state.C = True
-                state.a =  ((temp_high & 0xF) << 4) | temp_low
+                state.a = (state.a + 96) & 0xFF
 
         state.pc += 1
 
